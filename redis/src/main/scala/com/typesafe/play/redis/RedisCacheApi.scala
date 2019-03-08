@@ -1,27 +1,28 @@
 package com.typesafe.play.redis
 
 import java.io._
-import javax.inject.{Inject, Singleton}
 
 import biz.source_code.base64Coder.Base64Coder
-import org.sedis.Pool
+import com.typesafe.play.redis.JedisHelpers.RichJedisPool
+import javax.inject.{Inject, Singleton}
 import play.api.Logger
 import play.api.cache.CacheApi
+import redis.clients.jedis.JedisPool
 
 import scala.concurrent.duration.Duration
 import scala.reflect.ClassTag
 
 
 @Singleton
-class RedisCacheApi @Inject()(val namespace: String, sedisPool: Pool, classLoader: ClassLoader) extends CacheApi {
+class RedisCacheApi @Inject()(val namespace: String, jedisPool: JedisPool, classLoader: ClassLoader) extends CacheApi {
 
-  private val namespacedKey: (String => String) = { x => s"$namespace::$x" }
+  private val namespacedKey: String => String = { x => s"$namespace::$x" }
 
   def get[T](userKey: String)(implicit ct: ClassTag[T]): Option[T] = {
     Logger.trace(s"Reading key ${namespacedKey(userKey)}")
 
     try {
-      val rawData = sedisPool.withJedisClient { client => client.get(namespacedKey(userKey)) }
+      val rawData = jedisPool.withJedisClient { client => client.get(namespacedKey(userKey)) }
       rawData match {
         case null =>
           None
@@ -44,7 +45,7 @@ class RedisCacheApi @Inject()(val namespace: String, sedisPool: Pool, classLoade
     }
   }
 
-  def getOrElse[A: ClassTag](userKey: String, expiration: Duration)(orElse: => A) = {
+  def getOrElse[A: ClassTag](userKey: String, expiration: Duration)(orElse: => A): A = {
     get[A](namespacedKey(userKey)).getOrElse {
       val value = orElse
       set(namespacedKey(userKey), value, expiration)
@@ -52,7 +53,7 @@ class RedisCacheApi @Inject()(val namespace: String, sedisPool: Pool, classLoade
     }
   }
 
-  def remove(userKey: String): Unit = sedisPool.withJedisClient(_.del(namespacedKey(userKey)))
+  def remove(userKey: String): Unit = jedisPool.withJedisClient(_.del(namespacedKey(userKey)))
 
   def set(userKey: String, value: Any, expiration: Duration) {
     val expirationInSec = if (expiration == Duration.Inf) 0 else expiration.toSeconds.toInt
@@ -91,7 +92,7 @@ class RedisCacheApi @Inject()(val namespace: String, sedisPool: Pool, classLoade
       val redisV = prefix + "-" + new String(Base64Coder.encode(baos.toByteArray))
       Logger.trace(s"Setting key $key to $redisV")
 
-      sedisPool.withJedisClient { client =>
+      jedisPool.withJedisClient { client =>
         client.set(key, redisV)
         if (expirationInSec != 0) client.expire(key, expirationInSec)
       }
@@ -105,7 +106,7 @@ class RedisCacheApi @Inject()(val namespace: String, sedisPool: Pool, classLoade
   }
 
   private class ClassLoaderObjectInputStream(stream: InputStream) extends ObjectInputStream(stream) {
-    override protected def resolveClass(desc: ObjectStreamClass) = {
+    override protected def resolveClass(desc: ObjectStreamClass): Class[_] = {
       Class.forName(desc.getName, false, classLoader)
     }
   }

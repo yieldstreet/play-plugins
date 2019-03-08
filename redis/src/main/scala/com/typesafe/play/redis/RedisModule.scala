@@ -2,7 +2,6 @@ package com.typesafe.play.redis
 
 import javax.inject.{Inject, Provider}
 
-import org.sedis.Pool
 import play.api.cache.{CacheApi, Cached, NamedCache}
 import play.api.inject._
 import play.api.{Configuration, Environment}
@@ -18,13 +17,12 @@ trait RedisCacheComponents {
   def applicationLifecycle: ApplicationLifecycle
 
   lazy val jedisPool: JedisPool = new JedisPoolProvider(configuration, applicationLifecycle).get
-  lazy val sedisPool: Pool = new SedisPoolProvider(jedisPool).get
 
   /**
    * Use this to create with the given name.
    */
   def cacheApi(name: String): CacheApi = {
-    new RedisCacheApi(name, sedisPool, environment.classLoader)
+    new RedisCacheApi(name, jedisPool, environment.classLoader)
   }
 
   lazy val redisDefaultCacheApi: CacheApi = cacheApi(RedisModule.defaultCacheNameFromConfig(configuration))
@@ -49,7 +47,7 @@ class RedisModule extends Module {
       val namedCache = named(name)
       val cacheApiKey = bind[CacheApi].qualifiedWith(namedCache)
       Seq(
-        cacheApiKey.to(new NamedRedisCacheApiProvider(name, bind[Pool], environment.classLoader)),
+        cacheApiKey.to(new NamedRedisCacheApiProvider(name, bind[JedisPool], environment.classLoader)),
         bind[JavaCacheApi].qualifiedWith(namedCache).to(new NamedJavaCacheApiProvider(cacheApiKey)),
         bind[Cached].qualifiedWith(namedCache).to(new NamedCachedProvider(cacheApiKey))
       )
@@ -57,7 +55,6 @@ class RedisModule extends Module {
 
     val defaultBindings = Seq(
       bind[JedisPool].toProvider[JedisPoolProvider],
-      bind[Pool].toProvider[SedisPoolProvider],
       bind[JavaCacheApi].to[DefaultJavaCacheApi]
     ) ++ bindCaches.flatMap(bindCache)
 
@@ -75,7 +72,7 @@ object RedisModule {
   }
 }
 
-class NamedRedisCacheApiProvider(namespace: String, client: BindingKey[Pool], classLoader: ClassLoader) extends Provider[CacheApi] {
+class NamedRedisCacheApiProvider(namespace: String, client: BindingKey[JedisPool], classLoader: ClassLoader) extends Provider[CacheApi] {
   @Inject private var injector: Injector = _
   lazy val get: CacheApi = {
     new RedisCacheApi(namespace, injector.instanceOf(client), classLoader)

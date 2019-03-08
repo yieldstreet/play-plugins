@@ -1,9 +1,9 @@
 package com.typesafe.play.redis
 
 import java.util.concurrent.atomic.AtomicInteger
-import javax.inject.Inject
 
-import org.sedis.Pool
+import com.typesafe.play.redis.JedisHelpers._
+import javax.inject.Inject
 import org.specs2.specification.AfterAll
 import play.api.ApplicationLoader.Context
 import play.api._
@@ -14,12 +14,13 @@ import play.api.routing.Router
 import play.api.routing.sird._
 import play.api.test._
 import play.cache.{NamedCache, NamedCacheImpl}
+import redis.clients.jedis.JedisPool
 
 class RedisCachedSpec extends PlaySpecification with AfterAll {
 
   sequential
 
-  val redisOnlyCache: (() => FakeApplication) = { () => FakeApplication(additionalConfiguration = Map(
+  val redisOnlyCache: () => FakeApplication = { () => FakeApplication(additionalConfiguration = Map(
     "play.modules.disabled" -> Seq("play.api.cache.EhCacheModule")
   ))
   }
@@ -164,7 +165,7 @@ class RedisCachedSpec extends PlaySpecification with AfterAll {
   }
 
   override def afterAll() = {
-    redisOnlyCache().injector.instanceOf[Pool].withJedisClient(client => client.flushAll())
+    redisOnlyCache().injector.instanceOf[JedisPool].withJedisClient(client => client.flushAll())
   }
 }
 
