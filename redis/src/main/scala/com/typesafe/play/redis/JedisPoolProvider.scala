@@ -22,6 +22,10 @@ class JedisPoolProvider @Inject()(config: Configuration, lifecycle: ApplicationL
         .orElse(redisUri.map(_.getHost))
         .getOrElse("localhost")
 
+      val ssl = config.getBoolean("redis.ssl")
+        .orElse(redisUri.map(uri => "ssl".equalsIgnoreCase(uri.getScheme)))
+        .getOrElse(false)
+
       val port = config.getInt("redis.port")
         .orElse(redisUri.map(_.getPort).filter(_ != -1))
         .getOrElse(6379)
@@ -37,11 +41,11 @@ class JedisPoolProvider @Inject()(config: Configuration, lifecycle: ApplicationL
         .getOrElse(0)
 
       val poolConfig = createPoolConfig(config)
-      Logger.info(s"Redis Plugin enabled. Connecting to Redis on $host:$port to $database with timeout $timeout.")
+      Logger.info(s"Redis Plugin enabled. Connecting to Redis on $host:$port${if (ssl) " with SSL enabled" else "" } to $database with timeout $timeout.")
       Logger.info("Redis Plugin pool configuration: " + new ReflectionToStringBuilder(poolConfig).toString)
 
 
-      new JedisPool(poolConfig, host, port, timeout, password, database)
+      new JedisPool(poolConfig, host, port, timeout, password, database, ssl)
     }
 
     logger.info("Starting Jedis Pool Provider")
